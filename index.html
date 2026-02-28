@@ -1,0 +1,1653 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Compute Offload Advisor</title>
+    <meta name="description"
+        content="Developer tool for static analysis of CPU vs GPU workload offloading. Detect parallelizable patterns, estimate speedup, and get AMD ROCm/HIP recommendations." />
+    <style>
+        /* ============================================================
+   Compute Offload Advisor — Dark IDE Theme
+   ============================================================ */
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0
+        }
+
+        :root {
+            --bg-base: #0f1117;
+            --bg-panel: #161b24;
+            --bg-surface: #1c2230;
+            --bg-elevated: #212838;
+            --bg-hover: #263045;
+            --border: #2c3448;
+            --border-light: #3a4560;
+            --text-primary: #d4dbe8;
+            --text-secondary: #8898aa;
+            --text-muted: #556070;
+            --text-code: #cdd6f4;
+            --accent: #E8523A;
+            --accent-dim: rgba(232, 82, 58, .15);
+            --accent-hover: #f0634c;
+            --green: #5fb580;
+            --yellow: #e6b84a;
+            --blue: #5ba3d9;
+            --font-ui: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            --font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+            --header-h: 46px;
+            --statusbar-h: 24px;
+        }
+
+        html,
+        body {
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+            background: var(--bg-base);
+            color: var(--text-primary);
+            font-family: var(--font-ui);
+            font-size: 13px;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased
+        }
+
+        ::-webkit-scrollbar {
+            width: 7px;
+            height: 7px
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #2e3b50;
+            border-radius: 4px
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3d4f66
+        }
+
+        .hidden {
+            display: none !important
+        }
+
+        /* HEADER */
+        .app-header {
+            height: var(--header-h);
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            flex-shrink: 0;
+            gap: 12px
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px
+        }
+
+        .logo-mark svg {
+            display: block;
+            flex-shrink: 0
+        }
+
+        .header-title {
+            display: flex;
+            align-items: baseline;
+            gap: 8px
+        }
+
+        .title-main {
+            font-size: 13.5px;
+            font-weight: 600;
+            color: var(--text-primary);
+            letter-spacing: .01em
+        }
+
+        .title-tag {
+            font-size: 10.5px;
+            color: var(--text-muted);
+            letter-spacing: .04em;
+            font-weight: 400
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 8px
+        }
+
+        .badge-cpu,
+        .badge-gpu {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .06em;
+            padding: 2px 7px;
+            border-radius: 3px
+        }
+
+        .badge-cpu {
+            background: #26304a;
+            color: var(--blue)
+        }
+
+        .badge-gpu {
+            background: var(--accent-dim);
+            color: var(--accent)
+        }
+
+        .badge-sep {
+            color: var(--text-muted);
+            font-size: 12px
+        }
+
+        .header-info {
+            font-size: 10.5px;
+            color: var(--text-muted);
+            border-left: 1px solid var(--border);
+            padding-left: 10px;
+            margin-left: 4px
+        }
+
+        /* WORKSPACE */
+        .workspace {
+            display: flex;
+            height: calc(100vh - var(--header-h));
+            overflow: hidden
+        }
+
+        .panel {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-width: 320px
+        }
+
+        .panel-input {
+            flex: 0 0 50%;
+            border-right: 1px solid var(--border)
+        }
+
+        .panel-results {
+            flex: 1;
+            overflow-y: auto
+        }
+
+        /* TOOLBAR */
+        .panel-toolbar {
+            height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 12px;
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            gap: 8px
+        }
+
+        .toolbar-left,
+        .toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 8px
+        }
+
+        .toolbar-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .05em
+        }
+
+        .toolbar-select {
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 3px 8px;
+            font-size: 12px;
+            font-family: var(--font-ui);
+            outline: none;
+            cursor: pointer;
+            transition: border-color .15s
+        }
+
+        .toolbar-select:focus {
+            border-color: var(--accent)
+        }
+
+        .toolbar-select option {
+            background: var(--bg-elevated)
+        }
+
+        /* BUTTONS */
+        .btn {
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-family: var(--font-ui);
+            font-weight: 500;
+            padding: 5px 12px;
+            transition: background .15s, color .15s, border-color .15s;
+            white-space: nowrap
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #fff
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover)
+        }
+
+        .btn-primary:disabled {
+            opacity: .6;
+            cursor: default
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-light)
+        }
+
+        .btn-ghost:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+            border-color: var(--accent)
+        }
+
+        /* EDITOR */
+        .editor-wrapper {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            position: relative;
+            background: var(--bg-panel)
+        }
+
+        .line-numbers {
+            width: 46px;
+            padding: 12px 12px 12px 0;
+            text-align: right;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+            font-size: 12.5px;
+            line-height: 1.6;
+            user-select: none;
+            background: var(--bg-surface);
+            border-right: 1px solid var(--border);
+            overflow: hidden;
+            flex-shrink: 0;
+            white-space: pre
+        }
+
+        .editor-area-wrap {
+            flex: 1;
+            position: relative;
+            overflow: auto
+        }
+
+        .code-editor,
+        .syntax-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            min-height: 100%;
+            padding: 12px 14px;
+            font-family: var(--font-mono);
+            font-size: 12.5px;
+            line-height: 1.6;
+            tab-size: 4;
+            white-space: pre;
+            word-wrap: normal;
+            overflow-wrap: normal;
+            overflow: visible;
+            margin: 0
+        }
+
+        .code-editor {
+            background: transparent;
+            color: transparent;
+            caret-color: var(--text-primary);
+            border: none;
+            outline: none;
+            resize: none;
+            width: 100%;
+            z-index: 2;
+            min-width: 100%
+        }
+
+        .syntax-overlay {
+            color: var(--text-code);
+            pointer-events: none;
+            z-index: 1;
+            overflow: hidden
+        }
+
+        /* SYNTAX COLORS */
+        .syn-keyword {
+            color: #c792ea
+        }
+
+        .syn-builtin {
+            color: #82aaff
+        }
+
+        .syn-number {
+            color: #f78c6c
+        }
+
+        .syn-string {
+            color: #c3e88d
+        }
+
+        .syn-comment {
+            color: #546e7a;
+            font-style: italic
+        }
+
+        /* STATUS BAR */
+        .panel-statusbar {
+            height: var(--statusbar-h);
+            background: var(--bg-surface);
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 14px;
+            gap: 16px;
+            font-size: 10.5px;
+            color: var(--text-muted);
+            flex-shrink: 0
+        }
+
+        /* RESULTS PLACEHOLDER */
+        .results-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            gap: 12px;
+            padding: 40px;
+            text-align: center
+        }
+
+        .placeholder-text {
+            color: var(--text-secondary);
+            font-size: 13px
+        }
+
+        .placeholder-sub {
+            font-size: 11px;
+            color: var(--text-muted)
+        }
+
+        /* RESULTS SECTIONS */
+        .results-section {
+            border-bottom: 1px solid var(--border);
+            padding: 16px 18px
+        }
+
+        .results-section:last-child {
+            border-bottom: none
+        }
+
+        .section-heading {
+            font-size: 10.5px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            color: var(--text-muted);
+            margin-bottom: 12px
+        }
+
+        /* SCORE */
+        .score-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px
+        }
+
+        .score-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 12px 14px
+        }
+
+        .score-card-primary {
+            border-color: var(--accent);
+            background: var(--accent-dim)
+        }
+
+        .score-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            margin-bottom: 6px
+        }
+
+        .score-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1
+        }
+
+        .score-card-primary .score-value {
+            color: var(--accent)
+        }
+
+        .score-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px
+        }
+
+        .score-bar-wrap {
+            margin-top: 8px;
+            height: 4px;
+            background: var(--bg-elevated);
+            border-radius: 2px;
+            overflow: hidden
+        }
+
+        .score-bar {
+            height: 100%;
+            border-radius: 2px;
+            width: 0%;
+            transition: width .5s ease, background .5s
+        }
+
+        /* PERFORMANCE */
+        .perf-grid {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px
+        }
+
+        .perf-tile {
+            flex: 1;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 14px;
+            text-align: center
+        }
+
+        .perf-tile-highlight {
+            border-color: var(--green);
+            background: rgba(95, 181, 128, .08)
+        }
+
+        .perf-icon {
+            display: inline-block;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: .08em;
+            padding: 2px 8px;
+            border-radius: 3px;
+            margin-bottom: 8px
+        }
+
+        .perf-cpu {
+            background: #26304a;
+            color: var(--blue)
+        }
+
+        .perf-gpu {
+            background: rgba(95, 181, 128, .2);
+            color: var(--green)
+        }
+
+        .perf-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            margin-bottom: 4px
+        }
+
+        .perf-value {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-family: var(--font-mono)
+        }
+
+        .perf-hw {
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-top: 4px
+        }
+
+        .perf-arrow {
+            color: var(--text-muted);
+            font-size: 18px;
+            flex-shrink: 0
+        }
+
+        .speedup-row {
+            display: flex;
+            gap: 10px
+        }
+
+        .speedup-block {
+            flex: 1;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px
+        }
+
+        .speedup-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .04em
+        }
+
+        .speedup-value {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--accent);
+            font-family: var(--font-mono)
+        }
+
+        /* PATTERNS */
+        .pattern-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px
+        }
+
+        .pattern-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 8px 12px
+        }
+
+        .pattern-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0
+        }
+
+        .dot-high {
+            background: var(--accent)
+        }
+
+        .dot-medium {
+            background: var(--yellow)
+        }
+
+        .dot-low {
+            background: var(--text-muted)
+        }
+
+        .pattern-name {
+            flex: 1;
+            font-size: 12px;
+            color: var(--text-primary)
+        }
+
+        .pattern-weight {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: var(--font-mono)
+        }
+
+        .pattern-badge {
+            font-size: 9.5px;
+            font-weight: 600;
+            letter-spacing: .04em;
+            padding: 2px 7px;
+            border-radius: 3px;
+            background: var(--accent-dim);
+            color: var(--accent)
+        }
+
+        /* AMD RECS */
+        .amd-recs {
+            display: flex;
+            flex-direction: column;
+            gap: 8px
+        }
+
+        .amd-rec-item {
+            display: flex;
+            gap: 12px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            border-radius: 5px;
+            padding: 10px 14px
+        }
+
+        .amd-rec-tag {
+            font-size: 9.5px;
+            font-weight: 700;
+            color: var(--accent);
+            letter-spacing: .06em;
+            width: 64px;
+            flex-shrink: 0;
+            padding-top: 1px
+        }
+
+        .amd-rec-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 2px
+        }
+
+        .amd-rec-desc {
+            font-size: 11.5px;
+            color: var(--text-secondary);
+            line-height: 1.5
+        }
+
+        /* TRANSPARENCY */
+        .transparency-section {
+            padding: 0
+        }
+
+        .transparency-toggle {
+            width: 100%;
+            background: var(--bg-surface);
+            border: none;
+            border-top: 1px solid var(--border);
+            color: var(--text-secondary);
+            font-family: var(--font-ui);
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            padding: 10px 18px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-align: left;
+            transition: background .15s, color .15s
+        }
+
+        .transparency-toggle:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary)
+        }
+
+        .toggle-icon {
+            flex-shrink: 0;
+            transition: transform .2s
+        }
+
+        .toggle-icon.rotated {
+            transform: rotate(180deg)
+        }
+
+        .toggle-hint {
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-left: auto;
+            letter-spacing: .03em
+        }
+
+        .transparency-body {
+            background: var(--bg-base);
+            border-top: 1px solid var(--border);
+            padding: 16px 18px
+        }
+
+        .trans-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px
+        }
+
+        .trans-block {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 12px 14px
+        }
+
+        .trans-block-wide {
+            grid-column: span 2
+        }
+
+        .trans-heading {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .07em;
+            color: var(--text-muted);
+            margin-bottom: 8px
+        }
+
+        .trans-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11.5px
+        }
+
+        .trans-table th {
+            text-align: left;
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border)
+        }
+
+        .trans-table td {
+            padding: 4px 8px 4px 0;
+            color: var(--text-secondary);
+            vertical-align: top
+        }
+
+        .trans-table td:last-child {
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 11px
+        }
+
+        .trans-table tr+tr td {
+            border-top: 1px solid var(--border)
+        }
+
+        .formula-block {
+            display: flex;
+            flex-direction: column;
+            gap: 6px
+        }
+
+        .formula-block code {
+            display: block;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--blue);
+            background: var(--bg-elevated);
+            padding: 4px 8px;
+            border-radius: 3px;
+            white-space: pre-wrap;
+            word-break: break-all
+        }
+
+        .analysis-log {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-secondary);
+            background: var(--bg-elevated);
+            border-radius: 3px;
+            padding: 8px 10px;
+            max-height: 160px;
+            overflow-y: auto;
+            line-height: 1.7;
+            white-space: pre-wrap
+        }
+
+        .log-step {
+            color: var(--green)
+        }
+
+        .log-warn {
+            color: var(--yellow)
+        }
+
+        .log-info {
+            color: var(--text-muted)
+        }
+
+        .export-section {
+            padding: 12px 18px
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- HEADER -->
+    <header class="app-header">
+        <div class="header-left">
+            <div class="logo-mark">
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                    <rect x="1" y="1" width="9" height="9" rx="1" fill="#E8523A" />
+                    <rect x="12" y="1" width="9" height="9" rx="1" fill="#5a6a7a" opacity="0.6" />
+                    <rect x="1" y="12" width="9" height="9" rx="1" fill="#5a6a7a" opacity="0.6" />
+                    <rect x="12" y="12" width="9" height="9" rx="1" fill="#E8523A" opacity="0.8" />
+                </svg>
+            </div>
+            <div class="header-title">
+                <span class="title-main">Compute Offload Advisor</span>
+                <span class="title-tag">v1.0 · Static Analysis</span>
+            </div>
+        </div>
+        <div class="header-right">
+            <span class="badge-cpu">CPU</span>
+            <span class="badge-sep">→</span>
+            <span class="badge-gpu">GPU</span>
+            <span class="header-info">Rule-based · Deterministic · AMD-optimized</span>
+        </div>
+    </header>
+
+    <!-- WORKSPACE -->
+    <main class="workspace">
+
+        <!-- LEFT: Code Input -->
+        <section class="panel panel-input" id="panel-input">
+            <div class="panel-toolbar">
+                <div class="toolbar-left">
+                    <label for="lang-select" class="toolbar-label">Language</label>
+                    <select id="lang-select" class="toolbar-select">
+                        <option value="python">Python</option>
+                        <option value="cpp">C++</option>
+                    </select>
+                </div>
+                <div class="toolbar-right">
+                    <button class="btn btn-ghost" id="btn-sample">Load Sample</button>
+                    <button class="btn btn-primary" id="btn-analyze">Analyze Code</button>
+                </div>
+            </div>
+
+            <div class="editor-wrapper" id="editor-wrapper">
+                <div class="line-numbers" id="line-numbers"></div>
+                <div class="editor-area-wrap">
+                    <textarea id="code-input" class="code-editor" spellcheck="false" autocorrect="off"
+                        autocapitalize="off" placeholder="Paste your source code here…"></textarea>
+                    <pre class="syntax-overlay" id="syntax-overlay" aria-hidden="true"></pre>
+                </div>
+            </div>
+
+            <div class="panel-statusbar">
+                <span id="status-chars">0 chars</span>
+                <span id="status-lines">0 lines</span>
+                <span id="status-lang">Python</span>
+            </div>
+        </section>
+
+        <!-- RIGHT: Results -->
+        <section class="panel panel-results" id="panel-results">
+
+            <div class="results-placeholder" id="results-placeholder">
+                <div>
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <rect x="4" y="4" width="18" height="18" rx="2" fill="#2a3040" />
+                        <rect x="26" y="4" width="18" height="18" rx="2" fill="#E8523A" opacity="0.3" />
+                        <rect x="4" y="26" width="18" height="18" rx="2" fill="#2a3040" />
+                        <rect x="26" y="26" width="18" height="18" rx="2" fill="#2a3040" />
+                        <path d="M14 20 L24 24 L34 20" stroke="#E8523A" stroke-width="1.5" opacity="0.6" />
+                    </svg>
+                </div>
+                <p class="placeholder-text">Paste code and click <strong>Analyze Code</strong> to begin static analysis.
+                </p>
+                <p class="placeholder-sub">Supports Python and C++ · Detects parallel workload patterns</p>
+            </div>
+
+            <div class="results-content hidden" id="results-content">
+
+                <!-- Score Overview -->
+                <div class="results-section">
+                    <h2 class="section-heading">Workload Assessment</h2>
+                    <div class="score-grid">
+                        <div class="score-card score-card-primary">
+                            <div class="score-label">Parallelism Score</div>
+                            <div class="score-value" id="score-parallelism">—</div>
+                            <div class="score-sub">/ 10</div>
+                            <div class="score-bar-wrap">
+                                <div class="score-bar" id="score-bar"></div>
+                            </div>
+                        </div>
+                        <div class="score-card">
+                            <div class="score-label">GPU Offload Suitability</div>
+                            <div class="score-value" id="score-suitability" style="font-size:14px;padding-top:4px">—
+                            </div>
+                        </div>
+                        <div class="score-card">
+                            <div class="score-label">Detected Patterns</div>
+                            <div class="score-value" id="score-patterns">—</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Performance Estimates -->
+                <div class="results-section">
+                    <h2 class="section-heading">Performance Estimates</h2>
+                    <div class="perf-grid">
+                        <div class="perf-tile">
+                            <div class="perf-icon perf-cpu">CPU</div>
+                            <div class="perf-label">Est. CPU Time</div>
+                            <div class="perf-value" id="perf-cpu">—</div>
+                            <div class="perf-hw">8-core · 3.5 GHz</div>
+                        </div>
+                        <div class="perf-arrow">→</div>
+                        <div class="perf-tile perf-tile-highlight">
+                            <div class="perf-icon perf-gpu">GPU</div>
+                            <div class="perf-label">Est. GPU Time</div>
+                            <div class="perf-value" id="perf-gpu">—</div>
+                            <div class="perf-hw">AMD · 2048 threads</div>
+                        </div>
+                    </div>
+                    <div class="speedup-row">
+                        <div class="speedup-block">
+                            <span class="speedup-label">Estimated Speedup</span>
+                            <span class="speedup-value" id="speedup-value">—</span>
+                        </div>
+                        <div class="speedup-block">
+                            <span class="speedup-label">Perf-per-Watt Gain</span>
+                            <span class="speedup-value" id="ppw-value">—</span>
+                        </div>
+                        <div class="speedup-block">
+                            <span class="speedup-label">Transfer Overhead</span>
+                            <span class="speedup-value" id="transfer-value">—</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detected Patterns -->
+                <div class="results-section">
+                    <h2 class="section-heading">Detected Patterns</h2>
+                    <div class="pattern-list" id="pattern-list"></div>
+                </div>
+
+                <!-- AMD Recommendations -->
+                <div class="results-section">
+                    <h2 class="section-heading">AMD Ecosystem Recommendations</h2>
+                    <div class="amd-recs" id="amd-recs"></div>
+                </div>
+
+                <!-- Engineering Transparency Panel -->
+                <div class="results-section transparency-section">
+                    <button class="transparency-toggle" id="transparency-toggle" aria-expanded="false">
+                        <svg class="toggle-icon" id="toggle-chevron" width="14" height="14" viewBox="0 0 14 14"
+                            fill="none">
+                            <path d="M3 5L7 9L11 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        </svg>
+                        Engineering Transparency Panel
+                        <span class="toggle-hint">calculation formulas · assumptions · complexity</span>
+                    </button>
+                    <div class="transparency-body hidden" id="transparency-body">
+                        <div class="trans-grid">
+                            <div class="trans-block">
+                                <div class="trans-heading">Hardware Assumptions</div>
+                                <table class="trans-table">
+                                    <tr>
+                                        <td>CPU Cores</td>
+                                        <td>8</td>
+                                    </tr>
+                                    <tr>
+                                        <td>CPU Clock</td>
+                                        <td>3.5 GHz</td>
+                                    </tr>
+                                    <tr>
+                                        <td>GPU Threads</td>
+                                        <td>2,048 (parallel)</td>
+                                    </tr>
+                                    <tr>
+                                        <td>GPU Architecture</td>
+                                        <td>AMD RDNA / CDNA</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Efficiency Factor</td>
+                                        <td>0.65</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Transfer Overhead</td>
+                                        <td>12%</td>
+                                    </tr>
+                                    <tr>
+                                        <td>CPU TDP</td>
+                                        <td>95 W</td>
+                                    </tr>
+                                    <tr>
+                                        <td>GPU TDP</td>
+                                        <td>150 W</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div class="trans-block">
+                                <div class="trans-heading">Calculation Formulas</div>
+                                <div class="formula-block">
+                                    <code>parallel_factor = min(GPU_threads / CPU_cores, loop_size / CPU_cores)</code>
+                                    <code>eff_factor      = parallel_factor × 0.65</code>
+                                    <code>xfer_overhead   = cpu_time × 0.12</code>
+                                    <code>gpu_time        = (cpu_time / eff_factor) + xfer_overhead</code>
+                                    <code>speedup         = cpu_time / gpu_time</code>
+                                    <code>ppw_gain        = speedup × (CPU_TDP / GPU_TDP)</code>
+                                    <code>score           = Σ(pattern_weights) clamped [0, 10]</code>
+                                </div>
+                            </div>
+                            <div class="trans-block trans-block-wide">
+                                <div class="trans-heading">Pattern Weight Table</div>
+                                <table class="trans-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Pattern</th>
+                                            <th>Weight</th>
+                                            <th>Rationale</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="weight-table-body"></tbody>
+                                </table>
+                            </div>
+                            <div class="trans-block trans-block-wide">
+                                <div class="trans-heading">Analysis Log</div>
+                                <div class="analysis-log" id="analysis-log"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Export -->
+                <div class="results-section export-section">
+                    <button class="btn btn-ghost" id="btn-export">Export Analysis Report</button>
+                </div>
+
+            </div><!-- /results-content -->
+        </section>
+    </main>
+
+    <script>
+        /* ============================================================
+           ANALYSIS ENGINE  —  Rule-based static analysis
+           ============================================================ */
+        var HW = {
+            CPU_CORES: 8,
+            CPU_CLOCK_GHZ: 3.5,
+            GPU_THREADS: 2048,
+            EFFICIENCY_FACTOR: 0.65,
+            TRANSFER_OVERHEAD: 0.12,
+            CPU_TDP_W: 95,
+            GPU_TDP_W: 150,
+            BASE_CPU_TIME_MS: 1000,
+        };
+
+        var PATTERNS = [
+            { id: 'large_for_loop', label: 'Large Iteration Loop (n > 100,000)', weight: 2.5, level: 'high', description: 'Loop iterating over a large data set — embarrassingly parallel candidate.' },
+            { id: 'nested_loop', label: 'Nested Loop Structure (2+ levels)', weight: 2.0, level: 'high', description: 'Nested loops imply O(n²)+ complexity — high parallelisation payoff.' },
+            { id: 'matrix_operation', label: 'Matrix / 2-D Array Operation', weight: 1.8, level: 'high', description: 'Matrix multiply / transpose maps directly to GPU SIMD execution units.' },
+            { id: 'elementwise_mul', label: 'Element-wise Multiplication', weight: 1.5, level: 'high', description: 'Vectorisable arithmetic — ideal for GPU compute shaders.' },
+            { id: 'image_processing', label: 'Image / Pixel Processing', weight: 1.8, level: 'high', description: 'Pixel-level operations trivially parallelise across GPU thread blocks.' },
+            { id: 'reduction_op', label: 'Reduction Operation (sum/max/min)', weight: 1.2, level: 'medium', description: 'Parallel reductions are well-optimised in ROCm / HIP primitives.' },
+            { id: 'sort_op', label: 'Sorting Algorithm', weight: 1.0, level: 'medium', description: 'Parallel sort (Radix) achievable on GPU with ROCThrust.' },
+            { id: 'fft_pattern', label: 'FFT / Frequency Domain Pattern', weight: 1.5, level: 'medium', description: 'Fourier transforms are GPU-native; rocFFT provides drop-in acceleration.' },
+            { id: 'nn_pattern', label: 'Neural Network / Tensor Op Pattern', weight: 2.0, level: 'high', description: 'GEMM-heavy workloads directly accelerated by AMD ROCm / MIOpen.' },
+            { id: 'data_transfer', label: 'Frequent Memory Copy / Alloc', weight: -0.5, level: 'low', description: 'Frequent host-device transfers can negate GPU benefit.' },
+            { id: 'branch_heavy', label: 'Branch-Heavy / Divergent Control Flow', weight: -0.8, level: 'low', description: 'Divergent branches cause GPU warp inefficiency.' },
+            { id: 'recursion', label: 'Recursive Call Pattern', weight: -0.5, level: 'low', description: 'Recursion maps poorly to GPU execution model.' },
+        ];
+
+        var PY_RX = {
+            large_for_loop: [/for\s+\w+\s+in\s+range\s*\(\s*\d{6,}/, /for\s+\w+\s+in\s+range\s*\(\s*\w+\s*,\s*\d{6,}/, /np\.(zeros|ones|empty|linspace|arange)\s*\(\s*\d{5,}/, /\.reshape\s*\(.*\d{5,}/],
+            nested_loop: [/for\s+\w+[\s\S]{0,60}for\s+\w+/],
+            matrix_operation: [/np\.(dot|matmul|linalg|cross|tensordot|kron)|@\s*\w|gemm/i],
+            elementwise_mul: [/\*=|np\.(multiply|add|subtract|divide)\s*\(|element.?wise/i],
+            image_processing: [/cv2\.|PIL\.|skimage\.|Image\.open|imread|pixel|rgb2gray|BGR2/i],
+            reduction_op: [/np\.(sum|max|min|mean|std|var|cumsum)\s*\(|reduce\s*\(/i],
+            sort_op: [/sorted\s*\(|\.sort\s*\(|np\.sort\s*\(|argsort/i],
+            fft_pattern: [/np\.fft\.|scipy\.fft\.|fftfreq|rfft|ifft/i],
+            nn_pattern: [/torch\.|tensorflow\.|keras\.|Dense\s*\(|Conv2D|lstm|nn\.Module/i],
+            data_transfer: [/ctypes|mmap|memcpy|np\.frombuffer|np\.copy\s*\(/i],
+            branch_heavy: [/if\s+.*else.*if\s+.*else.*if|elif.*elif.*elif/],
+            recursion: [/def\s+(\w+)[\s\S]{0,400}\1\s*\(/],
+        };
+
+        var CPP_RX = {
+            large_for_loop: [/for\s*\(.*?[<>]\s*\d{6,}/, /for\s*\(.*?;\s*\w+\s*[<>]\s*n\s*;/, /std::vector.*\{\s*\d{5,}/],
+            nested_loop: [/for\s*\([\s\S]{0,80}for\s*\(/],
+            matrix_operation: [/cblas_|BLAS_|#include\s*[<"]cblas|mkl_|hipMalloc|gemm/i],
+            elementwise_mul: [/\*=\s*\w|simd|__m256|_mm256_|vfmadd|std::transform/i],
+            image_processing: [/#include.*opencv|Mat\s+\w+|imread|imshow|cvtColor/i],
+            reduction_op: [/std::accumulate|std::reduce|std::partial_sum|tbb::parallel_reduce/i],
+            sort_op: [/std::sort\s*\(|std::stable_sort|std::nth_element|tbb::parallel_sort/i],
+            fft_pattern: [/fftw_plan|fftw_execute|rocfft|cufft/i],
+            nn_pattern: [/#include.*dnn|onnxruntime|MIOpen|cudnn|at::Tensor|torch::Tensor/i],
+            data_transfer: [/memcpy\s*\(|memmove\s*\(|hipMemcpy|cudaMemcpy/i],
+            branch_heavy: [/if\s*\([^)]+\)\s*\{[\s\S]{0,20}\}\s*else\s*if[\s\S]{0,20}else\s*if/],
+            recursion: [],
+        };
+
+        function analyzeCode(code, lang) {
+            var regexMap = lang === 'python' ? PY_RX : CPP_RX;
+            var log = [], detected = [];
+
+            log.push({ type: 'info', msg: 'Language: ' + (lang === 'python' ? 'Python' : 'C++') });
+            log.push({ type: 'info', msg: 'Source size: ' + code.length + ' chars, ' + code.split('\n').length + ' lines' });
+
+            for (var i = 0; i < PATTERNS.length; i++) {
+                var pat = PATTERNS[i];
+                var rxList = regexMap[pat.id];
+                if (!rxList || rxList.length === 0) continue;
+                var matched = rxList.some(function (rx) { return rx.test(code); });
+                if (matched) {
+                    detected.push(pat);
+                    log.push({ type: 'step', msg: 'Pattern detected: "' + pat.label + '" [weight ' + (pat.weight > 0 ? '+' : '') + pat.weight + ']' });
+                }
+            }
+
+            // C++ recursive function check
+            if (lang === 'cpp') {
+                var fnMatch = code.match(/\b(\w+)\s*\([^)]*\)\s*\{[\s\S]{0,800}\1\s*\(/);
+                if (fnMatch) {
+                    var recPat = PATTERNS.find(function (p) { return p.id === 'recursion'; });
+                    if (recPat && detected.indexOf(recPat) === -1) {
+                        detected.push(recPat);
+                        log.push({ type: 'warn', msg: 'Recursive function detected — GPU offload limited.' });
+                    }
+                }
+            }
+
+            if (detected.length === 0)
+                log.push({ type: 'warn', msg: 'No significant parallelism patterns found in submitted code.' });
+
+            // Parallelism score
+            var rawScore = detected.reduce(function (s, p) { return s + p.weight; }, 0);
+            var parallelismScore = Math.max(0, Math.min(10, parseFloat(rawScore.toFixed(1))));
+            log.push({ type: 'step', msg: 'Raw score: ' + rawScore.toFixed(2) + ' → clamped score: ' + parallelismScore });
+
+            // Loop size estimate
+            var loopSize = extractLoopSize(code);
+            var loopDepth = detected.some(function (p) { return p.id === 'nested_loop'; }) ? 2 : 1;
+            var opWeight = Math.max(0.5, parallelismScore / 10);
+
+            var cpuTimeFactor = (loopSize / 1e5) * loopDepth * opWeight;
+            var cpuTimeMs = Math.max(1, HW.BASE_CPU_TIME_MS * cpuTimeFactor);
+            log.push({ type: 'info', msg: 'Loop size ~' + loopSize.toLocaleString() + ' · Depth: ' + loopDepth + ' · Op weight: ' + opWeight.toFixed(2) });
+            log.push({ type: 'info', msg: 'CPU time estimate: ' + fmtTime(cpuTimeMs) });
+
+            var parallelFactor = Math.min(HW.GPU_THREADS / HW.CPU_CORES, loopSize / HW.CPU_CORES);
+            var effectiveFactor = Math.max(1, parallelFactor * HW.EFFICIENCY_FACTOR);
+            var xferOverheadMs = cpuTimeMs * HW.TRANSFER_OVERHEAD;
+            var gpuTimeMs = (cpuTimeMs / effectiveFactor) + xferOverheadMs;
+            log.push({ type: 'step', msg: 'Parallel factor: ' + parallelFactor.toFixed(1) + ' × η=' + HW.EFFICIENCY_FACTOR + ' = ' + effectiveFactor.toFixed(1) });
+            log.push({ type: 'info', msg: 'Transfer overhead: ' + fmtTime(xferOverheadMs) + ' (12%)' });
+            log.push({ type: 'step', msg: 'GPU time estimate: ' + fmtTime(gpuTimeMs) });
+
+            var speedup = Math.max(1, parseFloat((cpuTimeMs / gpuTimeMs).toFixed(2)));
+            var ppwGain = parseFloat((speedup * (HW.CPU_TDP_W / HW.GPU_TDP_W)).toFixed(2));
+            log.push({ type: 'step', msg: 'Speedup: ' + speedup + '× · Perf-per-watt: ' + ppwGain + '×' });
+
+            return {
+                parallelismScore: parallelismScore,
+                suitability: getSuitability(parallelismScore),
+                detectedPatterns: detected,
+                cpuTimeMs: cpuTimeMs,
+                gpuTimeMs: gpuTimeMs,
+                speedup: speedup,
+                ppwGain: ppwGain,
+                xferOverheadMs: xferOverheadMs,
+                amdRecs: buildAmdRecs(detected, parallelismScore),
+                log: log,
+            };
+        }
+
+        function extractLoopSize(code) {
+            var numbers = [], m, rx = /\b(\d{4,})\b/g;
+            while ((m = rx.exec(code)) !== null) numbers.push(parseInt(m[1], 10));
+            if (numbers.length === 0) return 1e4;
+            return Math.min(Math.max.apply(null, numbers), 1e9);
+        }
+
+        function fmtTime(ms) {
+            if (ms < 1) return (ms * 1000).toFixed(1) + ' µs';
+            if (ms < 1000) return ms.toFixed(1) + ' ms';
+            if (ms < 60000) return (ms / 1000).toFixed(2) + ' s';
+            return (ms / 60000).toFixed(2) + ' min';
+        }
+
+        function getSuitability(score) {
+            if (score >= 7) return { label: 'Highly Recommended', level: 'high' };
+            if (score >= 4) return { label: 'Moderately Beneficial', level: 'medium' };
+            if (score >= 1) return { label: 'Low Expected Benefit', level: 'low' };
+            return { label: 'Not Recommended', level: 'none' };
+        }
+
+        function buildAmdRecs(detected, score) {
+            var recs = [];
+            var highP = detected.filter(function (p) { return p.level === 'high'; });
+            var ids = detected.map(function (p) { return p.id; });
+
+            if (score >= 4) {
+                recs.push({ tag: 'ROCm', title: 'AMD ROCm Open Compute Platform', desc: 'ROCm provides a complete GPU compute stack (driver, runtime, math libraries). Deploy on AMD Radeon / Instinct GPUs with no vendor lock-in.' });
+                recs.push({ tag: 'HIP', title: 'HIP Parallel Programming Model', desc: 'C++ runtime API compatible with AMD and NVIDIA. Refactor compute loops to hip<<<grid, block>>>() kernel launches for direct GPU execution.' });
+            }
+            if (ids.indexOf('matrix_operation') !== -1 || ids.indexOf('nn_pattern') !== -1)
+                recs.push({ tag: 'rocBLAS', title: 'rocBLAS / MIOpen Acceleration', desc: 'Matrix and tensor operations should use rocBLAS (GEMM) or MIOpen (DNN layers) for peak throughput on AMD hardware.' });
+            if (ids.indexOf('image_processing') !== -1)
+                recs.push({ tag: 'OpenCL', title: 'OpenCL Image Processing Pipeline', desc: 'Pixel-level operations expressed as OpenCL kernels using cl::Image2D objects allow fine-grained control over tile access patterns.' });
+            if (ids.indexOf('fft_pattern') !== -1)
+                recs.push({ tag: 'rocFFT', title: 'rocFFT — AMD Optimised FFT Library', desc: 'Drop-in replacement for FFTW on AMD GPUs. Supports 1D/2D/3D transforms, real-to-complex, and batch execution.' });
+            if (score < 2)
+                recs.push({ tag: 'NOTE', title: 'Low Parallelism — CPU Preferable', desc: 'Insufficient parallelism for GPU offload benefit. Focus on CPU-level optimisations: vectorisation (AVX2), cache locality, OpenMP.' });
+            return recs;
+        }
+
+        var SAMPLES = {
+            python: `import numpy as np
+
+# Matrix multiplication benchmark
+# Typical in ML training / scientific computing
+
+N = 1024          # matrix dimension
+iterations = 500000
+
+# Initialize matrices
+A = np.random.randn(N, N).astype(np.float32)
+B = np.random.randn(N, N).astype(np.float32)
+
+results = []
+
+for i in range(iterations):
+    # Element-wise multiply then matrix dot
+    C = np.multiply(A, B)
+    D = np.dot(C, A)
+
+    # Reduction operations
+    row_sums = np.sum(D, axis=1)
+    results.append(np.mean(row_sums))
+
+# Image processing pass
+import cv2
+img = cv2.imread('input.png')
+gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+for y in range(img.shape[0]):
+    for x in range(img.shape[1]):
+        img[y, x] = img[y, x] * 0.8 + gray[y, x] * 0.2
+
+print(f"Done. Mean result: {np.mean(results):.4f}")
+`,
+            cpp: `#include <vector>
+#include <numeric>
+#include <algorithm>
+#include <cmath>
+
+// Parallel matrix-vector multiplication kernel
+// Candidate for GPU offloading via HIP / ROCm
+
+void matmul(const std::vector<float>& A,
+            const std::vector<float>& B,
+                  std::vector<float>& C,
+            int N) {
+    for (int i = 0; i < N; ++i) {
+        for (int j = 0; j < N; ++j) {
+            float acc = 0.0f;
+            for (int k = 0; k < N; ++k) {
+                acc += A[i * N + k] * B[k * N + j];
+            }
+            C[i * N + j] = acc;
+        }
+    }
+}
+
+int main() {
+    const int N = 4096;
+    std::vector<float> A(N * N, 1.0f);
+    std::vector<float> B(N * N, 0.5f);
+    std::vector<float> C(N * N, 0.0f);
+
+    for (int iter = 0; iter < 10; ++iter) {
+        matmul(A, B, C, N);
+    }
+
+    // Reduction: total sum
+    float total = std::accumulate(C.begin(), C.end(), 0.0f);
+
+    // Sort result vector
+    std::sort(C.begin(), C.end());
+
+    return 0;
+}
+`,
+        };
+
+        /* ============================================================
+           SYNTAX HIGHLIGHTER  -  Left-to-right tokenizer
+           Regexes never run inside already-emitted span tags.
+           ============================================================ */
+        var _KW_PY  = /^(def|class|for|while|if|elif|else|return|import|from|as|with|pass|break|continue|try|except|finally|raise|yield|lambda|and|or|not|in|is|None|True|False|async|await|global|nonlocal)$/;
+        var _BI_PY  = /^(print|len|range|type|int|float|str|list|dict|set|tuple|bool|sum|max|min|sorted|enumerate|zip|map|filter|open|input|abs|round|isinstance|hasattr|getattr|setattr)$/;
+        var _KW_CPP = /^(int|float|double|char|bool|void|long|short|unsigned|const|static|inline|struct|class|namespace|template|typename|auto|return|for|while|if|else|do|switch|case|break|continue|new|delete|nullptr|true|false|public|private|protected|virtual|override|using|std)$/;
+        var _BI_CPP = /^(vector|string|cout|cin|endl|printf|scanf|malloc|free|memcpy|push_back|size|begin|end|sort|accumulate|transform)$/;
+
+        function escH(s) {
+            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function highlight(code, lang) {
+            var kwRx = lang === 'python' ? _KW_PY  : _KW_CPP;
+            var biRx = lang === 'python' ? _BI_PY  : _BI_CPP;
+            var isCpp = lang === 'cpp';
+            var out = '';
+            var i = 0, n = code.length;
+            while (i < n) {
+                var rest = code.slice(i);
+                var m;
+                // -- single-line comment
+                m = isCpp ? rest.match(/^\/\/[^\n]*/) : rest.match(/^#[^\n]*/);
+                if (m) { out += '<span class="syn-comment">' + escH(m[0]) + '</span>'; i += m[0].length; continue; }
+                // -- block comment (C++ only)
+                if (isCpp) { m = rest.match(/^\/\*[\s\S]*?\*\//); if (m) { out += '<span class="syn-comment">' + escH(m[0]) + '</span>'; i += m[0].length; continue; } }
+                // -- double-quoted string
+                m = rest.match(/^"(?:[^"\\]|\\.)*"/);
+                if (m) { out += '<span class="syn-string">' + escH(m[0]) + '</span>'; i += m[0].length; continue; }
+                // -- single-quoted string
+                m = rest.match(/^'(?:[^'\\]|\\.)*'/);
+                if (m) { out += '<span class="syn-string">' + escH(m[0]) + '</span>'; i += m[0].length; continue; }
+                // -- word token (keyword / builtin / identifier)
+                m = rest.match(/^[a-zA-Z_]\w*/);
+                if (m) {
+                    var w = m[0];
+                    if (kwRx.test(w)) { out += '<span class="syn-keyword">' + escH(w) + '</span>'; }
+                    else if (biRx.test(w)) { out += '<span class="syn-builtin">' + escH(w) + '</span>'; }
+                    else { out += escH(w); }
+                    i += w.length; continue;
+                }
+                // -- number literal
+                m = rest.match(/^\d+(\.\d+)?([eE][+-]?\d+)?/);
+                if (m) { out += '<span class="syn-number">' + escH(m[0]) + '</span>'; i += m[0].length; continue; }
+                // -- anything else
+                out += escH(code[i]); i++;
+            }
+            return out;
+        }
+
+        /* ============================================================
+           UI RENDERER
+           ============================================================ */
+        function renderResults(result) {
+            document.getElementById('results-placeholder').classList.add('hidden');
+            document.getElementById('results-content').classList.remove('hidden');
+            renderScores(result);
+            renderPerformance(result);
+            renderPatterns(result.detectedPatterns);
+            renderAmdRecs(result.amdRecs);
+            renderTransparency(result);
+        }
+
+        function renderScores(r) {
+            setText('score-parallelism', r.parallelismScore.toFixed(1));
+            setText('score-patterns', String(r.detectedPatterns.length));
+
+            var suitEl = document.getElementById('score-suitability');
+            if (suitEl) {
+                var clr = { high: '#5fb580', medium: '#e6b84a', low: '#8898aa', none: '#556070' };
+                suitEl.textContent = r.suitability.label;
+                suitEl.style.color = clr[r.suitability.level] || '';
+            }
+
+            var bar = document.getElementById('score-bar');
+            if (bar) {
+                bar.style.width = (r.parallelismScore / 10 * 100) + '%';
+                bar.style.background =
+                    r.parallelismScore >= 7 ? '#5fb580' :
+                        r.parallelismScore >= 4 ? '#5ba3d9' :
+                            r.parallelismScore >= 1 ? '#e6b84a' : '#556070';
+            }
+        }
+
+        function renderPerformance(r) {
+            setText('perf-cpu', fmtTime(r.cpuTimeMs));
+            setText('perf-gpu', fmtTime(r.gpuTimeMs));
+            setText('speedup-value', r.speedup + '×');
+            setText('ppw-value', r.ppwGain + '×');
+            setText('transfer-value', fmtTime(r.xferOverheadMs));
+        }
+
+        function renderPatterns(detected) {
+            var el = document.getElementById('pattern-list');
+            if (!el) return;
+            if (detected.length === 0) {
+                el.innerHTML = '<div class="pattern-item"><div class="pattern-dot dot-low"></div><span class="pattern-name" style="color:var(--text-muted)">No significant parallel patterns detected.</span></div>';
+                return;
+            }
+            el.innerHTML = detected.map(function (p) {
+                return '<div class="pattern-item">'
+                    + '<div class="pattern-dot dot-' + p.level + '"></div>'
+                    + '<span class="pattern-name">' + p.label + '</span>'
+                    + '<span class="pattern-weight">' + (p.weight > 0 ? '+' : '') + p.weight + '</span>'
+                    + '<span class="pattern-badge">' + p.level.toUpperCase() + '</span>'
+                    + '</div>';
+            }).join('');
+        }
+
+        function renderAmdRecs(recs) {
+            var el = document.getElementById('amd-recs');
+            if (!el) return;
+            if (!recs || recs.length === 0) {
+                el.innerHTML = '<p style="color:var(--text-muted);font-size:12px;">No specific AMD recommendations for this workload.</p>';
+                return;
+            }
+            el.innerHTML = recs.map(function (r) {
+                return '<div class="amd-rec-item">'
+                    + '<div class="amd-rec-tag">' + r.tag + '</div>'
+                    + '<div><div class="amd-rec-title">' + r.title + '</div>'
+                    + '<div class="amd-rec-desc">' + r.desc + '</div></div>'
+                    + '</div>';
+            }).join('');
+        }
+
+        function renderTransparency(r) {
+            var tbody = document.getElementById('weight-table-body');
+            if (tbody) {
+                tbody.innerHTML = PATTERNS.map(function (p) {
+                    var active = r.detectedPatterns.indexOf(p) !== -1 ? 'style="color:var(--text-primary)"' : '';
+                    var wclr = p.weight >= 0 ? 'var(--green)' : 'var(--accent)';
+                    return '<tr ' + active + '>'
+                        + '<td>' + p.label + '</td>'
+                        + '<td style="color:' + wclr + ';font-family:var(--font-mono)">' + (p.weight > 0 ? '+' : '') + p.weight + '</td>'
+                        + '<td style="color:var(--text-muted)">' + p.description + '</td>'
+                        + '</tr>';
+                }).join('');
+            }
+
+            var logEl = document.getElementById('analysis-log');
+            if (logEl) {
+                logEl.innerHTML = r.log.map(function (e) {
+                    var cls = e.type === 'step' ? 'log-step' : e.type === 'warn' ? 'log-warn' : 'log-info';
+                    var pfx = e.type === 'step' ? '✓' : e.type === 'warn' ? '⚠' : '·';
+                    return '<span class="' + cls + '">' + pfx + ' ' + e.msg + '</span>\n';
+                }).join('');
+            }
+        }
+
+        function setText(id, val) {
+            var el = document.getElementById(id);
+            if (el) el.textContent = val;
+        }
+
+        /* ============================================================
+           EXPORT
+           ============================================================ */
+        function exportReport(result, code, lang) {
+            var lines = [
+                '========================================',
+                ' Compute Offload Advisor — Analysis Report',
+                ' Generated: ' + new Date().toLocaleString(),
+                '========================================\n',
+                'Language     : ' + (lang === 'python' ? 'Python' : 'C++'),
+                'Source lines : ' + code.split('\n').length + '\n',
+                '── Workload Assessment ──────────────────',
+                'Parallelism Score  : ' + result.parallelismScore + ' / 10',
+                'GPU Suitability    : ' + result.suitability.label,
+                'Patterns Detected  : ' + result.detectedPatterns.length + '\n',
+                '── Performance Estimates ────────────────',
+                'CPU Time Estimate  : ' + fmtTime(result.cpuTimeMs) + '  (8-core, 3.5 GHz)',
+                'GPU Time Estimate  : ' + fmtTime(result.gpuTimeMs) + '  (AMD, 2048 threads)',
+                'Estimated Speedup  : ' + result.speedup + '×',
+                'Perf-per-Watt Gain : ' + result.ppwGain + '×',
+                'Transfer Overhead  : ' + fmtTime(result.xferOverheadMs) + '\n',
+                '── Detected Patterns ────────────────────',
+            ].concat(
+                result.detectedPatterns.length
+                    ? result.detectedPatterns.map(function (p) { return '  [' + p.level.toUpperCase() + '] ' + p.label + ' (weight: ' + p.weight + ')'; })
+                    : ['  None detected.'],
+                ['\n── AMD Recommendations ──────────────────'],
+                result.amdRecs.length
+                    ? result.amdRecs.map(function (r) { return '  [' + r.tag + '] ' + r.title + '\n         ' + r.desc; })
+                    : ['  No specific recommendations.'],
+                ['\n── Analysis Log ─────────────────────────'],
+                result.log.map(function (e) { return '  ' + e.type.toUpperCase() + ' ' + e.msg; }),
+                ['\n========================================',
+                    ' Hardware Assumptions',
+                    '  CPU Cores  : 8          CPU Clock  : 3.5 GHz',
+                    '  GPU Threads: 2,048      Efficiency : 0.65',
+                    '  Transfer OH: 12%        CPU TDP    : 95 W  GPU TDP: 150 W',
+                    '========================================']
+            );
+
+            var blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'offload-analysis-' + Date.now() + '.txt';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        /* ============================================================
+           MAIN — Wire everything together
+           ============================================================ */
+        var currentLang = 'python';
+        var lastResult = null;
+        var lastCode = '';
+
+        var codeInput = document.getElementById('code-input');
+        var syntaxOverlay = document.getElementById('syntax-overlay');
+        var lineNums = document.getElementById('line-numbers');
+        var langSelect = document.getElementById('lang-select');
+        var btnAnalyze = document.getElementById('btn-analyze');
+        var btnSample = document.getElementById('btn-sample');
+        var btnExport = document.getElementById('btn-export');
+
+        // Transparency toggle
+        document.getElementById('transparency-toggle').addEventListener('click', function () {
+            var body = document.getElementById('transparency-body');
+            var chevron = document.getElementById('toggle-chevron');
+            var open = body.classList.toggle('hidden');
+            this.setAttribute('aria-expanded', String(!open));
+            chevron.classList.toggle('rotated', !open);
+        });
+        // Start closed
+        document.getElementById('transparency-body').classList.add('hidden');
+
+        // Language select
+        langSelect.addEventListener('change', function () {
+            currentLang = langSelect.value;
+            document.getElementById('status-lang').textContent = currentLang === 'python' ? 'Python' : 'C++';
+            loadSample();
+        });
+
+        // Load sample
+        btnSample.addEventListener('click', loadSample);
+
+        function loadSample() {
+            var code = SAMPLES[currentLang] || '';
+            codeInput.value = code;
+            syncOverlay(code);
+            updateLineNums(code);
+            updateStatus(code);
+        }
+
+        // Editor events
+        codeInput.addEventListener('input', function () {
+            var code = codeInput.value;
+            syncOverlay(code);
+            updateLineNums(code);
+            updateStatus(code);
+        });
+
+        codeInput.addEventListener('scroll', function () {
+            syntaxOverlay.scrollTop = codeInput.scrollTop;
+            syntaxOverlay.scrollLeft = codeInput.scrollLeft;
+            lineNums.scrollTop = codeInput.scrollTop;
+        });
+
+        codeInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                var s = codeInput.selectionStart;
+                codeInput.value = codeInput.value.substring(0, s) + '    ' + codeInput.value.substring(codeInput.selectionEnd);
+                codeInput.selectionStart = codeInput.selectionEnd = s + 4;
+                syncOverlay(codeInput.value);
+            }
+        });
+
+        function syncOverlay(code) {
+            syntaxOverlay.innerHTML = highlight(code, currentLang) + '\n';
+        }
+
+        function updateLineNums(code) {
+            var count = Math.max(1, code.split('\n').length);
+            var html = '';
+            for (var i = 1; i <= count; i++) html += i + '\n';
+            lineNums.textContent = html;
+        }
+
+        function updateStatus(code) {
+            document.getElementById('status-chars').textContent = code.length.toLocaleString() + ' chars';
+            document.getElementById('status-lines').textContent = code.split('\n').length + ' lines';
+        }
+
+        // Analyze
+        btnAnalyze.addEventListener('click', function () {
+            var code = codeInput.value.trim();
+            if (!code) {
+                var ph = document.getElementById('results-placeholder');
+                ph.classList.remove('hidden');
+                document.getElementById('results-content').classList.add('hidden');
+                ph.querySelector('.placeholder-text').innerHTML = '<span style="color:var(--accent)">Please paste or load sample code before analyzing.</span>';
+                return;
+            }
+            btnAnalyze.textContent = 'Analyzing…';
+            btnAnalyze.disabled = true;
+            setTimeout(function () {
+                try {
+                    lastCode = code;
+                    lastResult = analyzeCode(code, currentLang);
+                    renderResults(lastResult);
+                } catch (err) {
+                    console.error(err);
+                }
+                btnAnalyze.textContent = 'Analyze Code';
+                btnAnalyze.disabled = false;
+            }, 40);
+        });
+
+        // Export
+        btnExport.addEventListener('click', function () {
+            if (lastResult) exportReport(lastResult, lastCode, currentLang);
+        });
+
+        // Auto-load Python sample on start
+        loadSample();
+    </script>
+</body>
+
+</html>
